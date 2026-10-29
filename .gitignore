@@ -8,3 +8,4 @@ build/
 .pytest-tmp/
 .ruff_cache/
 .DS_Store
+docs/_build/

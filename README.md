@@ -4,6 +4,10 @@ A single dashboard for every Claude Code session on this machine — which ones 
 running, what models they are burning tokens on, and how many agents and
 subagents each one has spawned.
 
+**Documentation: <https://agentboss.readthedocs.io/>**
+
+![The agentboss dashboard](docs/_static/dashboard.png)
+
 agentboss is a read-only observer. It reads the Claude Code state directory
 (`~/.claude` by default) and never writes to it.
 
@@ -143,10 +147,17 @@ UI confirms before sending.
 | `GET /api/stream` | SSE; pushes a fresh overview when the numbers change |
 | `POST /api/sessions/{id}/{interrupt,terminate}` | Requires `--allow-control` |
 
-## Tests
+## Development
 
 ```bash
-.venv/bin/pytest
+uv pip install -e ".[dev,docs]"
+uv run python -m invoke test         # test suite
+uv run python -m invoke docs         # build the docs site, warnings are errors
+uv run python -m invoke docs-serve   # live-reloading preview on :8000
 ```
+
+The docs site lives in `docs/` (Sphinx with Markdown pages via MyST) and is
+published on Read the Docs. Regenerate the dashboard screenshot with
+`scripts/screenshot.py` against a running instance; it anonymises the page first.
 
 The suite builds a synthetic `~/.claude` tree, so it never touches your real one.
