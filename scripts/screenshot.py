@@ -94,7 +94,8 @@ FAKE_RECS = [
         "severity": "high",
         "title": "Compact or clear “Refactor storage”",
         "detail": "Each turn re-reads about 412k tokens of context. Run /compact to keep going on "
-        "the same task, or /clear before starting an unrelated one; that brings each turn near 40k.",
+        "the same task, or /clear before starting an unrelated one; that brings each turn "
+        "near 40k.",
         "session_id": None,
         "estimated_savings": 14.88,
         "savings_basis": "per 100 further turns",
