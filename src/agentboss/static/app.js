@@ -212,10 +212,12 @@ function quotaMeter(label, w) {
   const frac = w.used_fraction;
   const level = frac == null ? '' : frac >= 0.9 ? 'critical' : frac >= 0.7 ? 'warning' : 'good';
   const resets = w.active ? `resets ${new Date(w.end).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : 'no active block';
-  const capText = w.estimated_cap ? ` of ~${usd(w.estimated_cap)} (${Math.round(frac * 100)}%)` : ' · no limit hit recorded yet';
+  const amount = w.estimated_cap
+    ? `${Math.round(frac * 100)}% · ${usd(w.cost)} of ~${usd(w.estimated_cap)} API-equiv`
+    : `${usd(w.cost)} API-equiv · no limit hit recorded yet`;
   return el('div', { class: 'bar-row' },
     el('div', { class: 'name', text: label }),
-    el('div', { class: 'amount', text: `${usd(w.cost)}${capText}` }),
+    el('div', { class: 'amount', text: amount }),
     el('div', { class: 'bar-track' },
       el('div', { class: `bar-fill quota-${level}`, style: `width:${Math.min(100, Math.max(1.5, (frac ?? 0) * 100))}%` })),
     el('div', { class: 'sub', text: `${resets} · ${compact(w.tokens)} tok · on pace for ${usd(w.projected_cost)}` }),

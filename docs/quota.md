@@ -39,7 +39,10 @@ Cache reads are charged at 0.1× the input price and cache writes at 1.25×.
 Unknown models are priced as Opus 5. The table lives in `PRICES` in
 `src/agentboss/quota.py`.
 
-The resulting dollar figures are a **proxy for quota, not a bill**.
+The resulting dollar figures are a **proxy for quota, not a bill**. On a
+subscription plan they will usually be far larger than the subscription price:
+heavy Claude Code use can reach thousands of dollars a week at API prices. The
+number that matters is the percentage of the estimated cap.
 
 ## The windows
 
