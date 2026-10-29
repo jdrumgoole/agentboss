@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-allow-control="{{ 'true' if allow_control else 'false' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>agentboss</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%232a78d6'/></svg>">
+</head>
+<body>
+<div class="shell">
+
+  <header class="top">
+    <h1 class="wordmark">agentboss<span> · Claude session control</span></h1>
+    <span class="home">{{ claude_home }}</span>
+    <span class="spacer"></span>
+    <span class="pulse" id="pulse"><span class="dot"></span><span id="pulse-text">connecting…</span></span>
+    <button class="ghost" id="theme-toggle" type="button" title="Switch theme">theme</button>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="panel quota-panel">
+    <h2>Quota</h2>
+    <p class="caption">API-equivalent spend in each limit window. Caps are estimated from recorded limit hits, so treat them as a guide, not the plan's own meter.</p>
+    <div class="quota-meters" id="quota-meters"></div>
+    <div class="quota-daily" id="quota-daily"></div>
+    <p class="caption" id="quota-hits"></p>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <h2>Activity</h2>
+      <p class="caption" id="activity-caption">Assistant turns per hour, last 24 hours</p>
+      <div class="chart" id="activity-chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Models</h2>
+      <p class="caption">Tokens billed per model, sessions and subagents combined</p>
+      <div class="bars" id="model-bars"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Agent types</h2>
+      <p class="caption">Subagents spawned, by agent type</p>
+      <div class="bars" id="agent-bars"></div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <input type="search" id="f-search" placeholder="Search id, project, title, prompt…" autocomplete="off">
+    <select id="f-status" title="Session status"></select>
+    <select id="f-project" title="Project"></select>
+    <select id="f-model" title="Model"></select>
+    <select id="f-agent-type" title="Agent type"></select>
+    <span class="count" id="row-count"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable" data-sort="status">Status</th>
+          <th class="sortable" data-sort="project">Session</th>
+          <th>Models</th>
+          <th class="sortable num" data-sort="agents">Agents</th>
+          <th class="num">Sub</th>
+          <th class="sortable num" data-sort="messages">Msgs</th>
+          <th class="num">Tools</th>
+          <th class="sortable num" data-sort="tokens">Tokens</th>
+          <th class="sortable num" data-sort="last_activity">Last active</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="footnote">
+    Token counts are cumulative billed tokens across every turn, not context size.
+    agentboss reads <code>{{ claude_home }}</code> and never writes to it.
+    <a href="/docs">API docs</a> · agentboss {{ version }}
+  </p>
+</div>
+
+<div class="backdrop" id="backdrop" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-label="Session detail"></aside>
+<div class="tooltip" id="tooltip" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
