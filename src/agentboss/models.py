@@ -62,6 +62,13 @@ class AgentSummary(BaseModel):
     session_id: str
     project: str
     agent_type: str
+    #: The agent definition it runs.  Differs from `agent_type` for named
+    #: teammates, whose type is their name.
+    base_type: str | None = None
+    #: How it was spawned, e.g. `in_process_teammate`.
+    task_kind: str | None = None
+    #: The model requested at spawn time, if one was.
+    requested_model: str | None = None
     description: str = ""
     spawn_depth: int = 1
     tool_use_id: str | None = None
@@ -257,3 +264,16 @@ class QuotaReport(BaseModel):
     limit_hits: list[LimitHit] = Field(default_factory=list)
     daily: list[SpendBucket] = Field(default_factory=list)
     blocks: list[QuotaWindow] = Field(default_factory=list)
+
+
+class Recommendation(BaseModel):
+    """A concrete way to spend less quota, with the evidence behind it."""
+
+    kind: str
+    severity: str  # high | medium | low
+    title: str
+    detail: str
+    session_id: str | None = None
+    #: API-equivalent USD, when a saving can be estimated.
+    estimated_savings: float | None = None
+    savings_basis: str | None = None

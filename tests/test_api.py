@@ -231,3 +231,10 @@ def test_quota_endpoint(client):
     assert {"five_hour", "seven_day", "limit_hits", "daily", "blocks"} <= body.keys()
     assert len(body["daily"]) == 7
     assert body["seven_day"]["kind"] == "seven_day"
+
+
+def test_recommendations_endpoint(client):
+    body = client.get("/api/recommendations").json()
+    assert isinstance(body, list)
+    for rec in body:
+        assert rec["severity"] in {"high", "medium", "low"}

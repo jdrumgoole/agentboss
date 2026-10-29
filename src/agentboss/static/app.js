@@ -252,6 +252,45 @@ async function refreshQuota() {
   if (response.ok) renderQuota(await response.json());
 }
 
+/* ---------- recommendations ---------- */
+
+const RECS_SHOWN = 6;
+
+function renderRecs(recs) {
+  const host = document.getElementById('recs');
+  if (!recs.length) {
+    host.replaceChildren(el('p', { class: 'empty', text: 'Nothing to flag: no deep contexts, heavy sessions or oversized tool output right now.' }));
+    return;
+  }
+  const card = (r) => el('div', { class: `rec rec-${r.severity}` },
+    el('div', { class: 'rec-head' },
+      el('span', { class: 'rec-sev', text: r.severity }),
+      el('span', { class: 'rec-title', text: r.title }),
+      r.estimated_savings != null
+        ? el('span', { class: 'rec-save', text: `save ~${usd(r.estimated_savings)} ${r.savings_basis || ''}` })
+        : null,
+    ),
+    el('p', { class: 'rec-detail', text: r.detail }),
+    r.session_id ? el('a', {
+      class: 'rec-link', href: `#/session/${r.session_id}`, text: 'open session',
+      onclick: (event) => { event.preventDefault(); openDrawer(r.session_id); },
+    }) : null,
+  );
+  const shown = recs.slice(0, RECS_SHOWN).map(card);
+  const rest = recs.slice(RECS_SHOWN);
+  if (rest.length) {
+    const more = el('details', { class: 'rec-more' },
+      el('summary', { text: `${rest.length} more` }), ...rest.map(card));
+    shown.push(more);
+  }
+  host.replaceChildren(...shown);
+}
+
+async function refreshRecs() {
+  const response = await fetch('/api/recommendations');
+  if (response.ok) renderRecs(await response.json());
+}
+
 /* ---------- activity chart ---------- */
 
 function barPath(x, y, w, h, r) {
@@ -659,6 +698,7 @@ function applyOverview(overview) {
   renderAgentBars(overview);
   renderActivity(overview);
   refreshQuota();
+  refreshRecs();
   if (!state.filtersLoaded) loadFilters();
 }
 

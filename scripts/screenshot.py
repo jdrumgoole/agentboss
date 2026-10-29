@@ -87,6 +87,43 @@ def fake_quota() -> dict:
     }
 
 
+#: Recommendations name real sessions and agents; show representative fakes.
+FAKE_RECS = [
+    {
+        "kind": "context",
+        "severity": "high",
+        "title": "Compact or clear “Refactor storage”",
+        "detail": "Each turn re-reads about 412k tokens of context. Run /compact to keep going on "
+        "the same task, or /clear before starting an unrelated one; that brings each turn near 40k.",
+        "session_id": None,
+        "estimated_savings": 14.88,
+        "savings_basis": "per 100 further turns",
+    },
+    {
+        "kind": "subagent_model",
+        "severity": "medium",
+        "title": "Run general-purpose agents on Sonnet",
+        "detail": "38 general-purpose agents ran on a premium model in the last 30 days, $412 "
+        "API-equivalent. Ask for a cheaper model when delegating; the Agent tool takes a model "
+        "argument. Keep the premium model for work that needs it.",
+        "session_id": None,
+        "estimated_savings": 206.0,
+        "savings_basis": "over the last 30 days, at Sonnet 5.5 prices",
+    },
+    {
+        "kind": "tool_output",
+        "severity": "low",
+        "title": "Bash results are large",
+        "detail": "184 Bash calls in recently active sessions averaged about 6.2k tokens each "
+        "(1.1M in all). Each result stays in context and is re-read on every later turn. Trim "
+        "command output with head, tail or grep, and run noisy builds and tests quietly (-q) so "
+        "only failures come back.",
+        "session_id": None,
+        "estimated_savings": None,
+        "savings_basis": None,
+    },
+]
+
 #: Headline totals in the tiles and model panel, replaced with round fakes.
 FAKE_TEXT = {
     "#tiles .tile:nth-child(5) .value": "1.2B",
@@ -147,9 +184,15 @@ def main() -> None:
             "**/api/quota*",
             lambda route: route.fulfill(status=200, content_type="application/json", body=quota),
         )
+        recs = json.dumps(FAKE_RECS)
+        page.route(
+            "**/api/recommendations*",
+            lambda route: route.fulfill(status=200, content_type="application/json", body=recs),
+        )
         page.goto(args.url)
         page.wait_for_selector("#rows tr .sess-name", timeout=120_000)
         page.wait_for_selector("#quota-meters .bar-row", timeout=60_000)
+        page.wait_for_selector("#recs .rec", timeout=60_000)
         # Rewrite and capture back to back, so a live repaint cannot land between.
         page.evaluate(
             "() => document.querySelectorAll('[title]').forEach((n) => n.removeAttribute('title'))"

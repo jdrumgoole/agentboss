@@ -7,6 +7,7 @@ OpenAPI docs are served at `/docs` on a running instance.
 |---|---|
 | `GET /api/overview?hours=24` | Tiles, model mix, agent-type mix, activity timeline. |
 | `GET /api/quota?days=30` | Quota windows, estimated caps, limit hits, daily spend. |
+| `GET /api/recommendations` | Ways to use less quota; see [Recommendations](recommendations.md). |
 | `GET /api/sessions` | Sessions, filtered and sorted. |
 | `GET /api/sessions/{id}` | One session with every subagent. |
 | `GET /api/agents` | Subagents across sessions. |

@@ -14,6 +14,12 @@ Spend in the current 5-hour block and 7-day window against caps estimated from
 your recorded limit hits, with 30 days of daily spend underneath. See
 [Quota](quota.md) for how this is worked out.
 
+## Recommendations
+
+Concrete ways to use less quota, most urgent first, each with an estimated
+saving where one can be worked out. The top six are shown; the rest fold away.
+See [Recommendations](recommendations.md).
+
 ## Activity
 
 Assistant turns per hour across every session and subagent, for the last 24

@@ -16,6 +16,7 @@ agentboss is a read-only observer. It reads the Claude Code state directory
 getting-started
 dashboard
 quota
+recommendations
 controlling-sessions
 ```
 

@@ -497,3 +497,20 @@ td.dim { color: var(--text-secondary); }
 .quota-day { flex: 1; min-width: 2px; background: var(--series-1); border-radius: 2px 2px 0 0; opacity: .85; }
 .quota-day.hit { background: var(--status-critical); }
 .quota-day:hover { opacity: 1; }
+
+/* ---------- recommendations ---------- */
+
+.recs-panel { margin-bottom: 16px; }
+.recs { display: flex; flex-direction: column; gap: 10px; }
+.rec { border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius-sm); padding: 10px 14px; background: var(--surface-1); }
+.rec-high { border-left-color: var(--status-critical); }
+.rec-medium { border-left-color: var(--status-warning); }
+.rec-low { border-left-color: var(--border-strong); }
+.rec-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rec-sev { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); min-width: 52px; }
+.rec-title { font-weight: 600; color: var(--text-primary); }
+.rec-save { margin-left: auto; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.rec-detail { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.rec-link { display: inline-block; margin-top: 4px; font-size: 12px; }
+.rec-more summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; padding: 4px 0; }
+.rec-more[open] { display: flex; flex-direction: column; gap: 10px; }

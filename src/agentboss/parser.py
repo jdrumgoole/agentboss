@@ -97,6 +97,12 @@ class TranscriptStats:
     #: hour-truncated UTC start -> [assistant turns, tokens]
     activity: dict[datetime, list[int]] = field(default_factory=dict)
 
+    #: Context the most recent turn was given: input plus cache reads and writes.
+    context_tokens: int = 0
+    #: Characters of tool output fed back into the context, per tool name.
+    tool_result_chars: Counter[str] = field(default_factory=Counter)
+    tool_result_count: Counter[str] = field(default_factory=Counter)
+
     #: (five-minute bucket, model) -> spend, for quota windows.
     spend: dict[tuple[datetime, str], Spend] = field(default_factory=dict)
     #: Raw `quotaLimits` objects from rejected requests, with their timestamp.
@@ -127,6 +133,8 @@ class IncrementalTranscript:
         self._inode: int | None = None
         self._recent_ids: deque[str] = deque(maxlen=_RECENT_IDS)
         self._recent_id_set: set[str] = set()
+        #: tool_use id -> tool name, until the matching result arrives.
+        self._pending_tools: dict[str, str] = {}
         self.size = 0
         self.mtime = 0.0
         self.lines_parsed = 0
@@ -161,6 +169,7 @@ class IncrementalTranscript:
         self._offset = 0
         self._recent_ids.clear()
         self._recent_id_set.clear()
+        self._pending_tools.clear()
         self.lines_parsed = 0
 
     def _consume(self) -> None:
@@ -224,6 +233,7 @@ class IncrementalTranscript:
             # Tool results are replayed as user records; only real turns count.
             if not record.get("isMeta") and not record.get("toolUseResult"):
                 stats.user_messages += 1
+            self._apply_tool_results(record)
         elif kind == "ai-title":
             stats.title = record.get("aiTitle") or stats.title
         elif kind == "custom-title":
@@ -236,6 +246,25 @@ class IncrementalTranscript:
             stats.permission_mode = record.get("permissionMode") or stats.permission_mode
         elif kind == "mode":
             stats.mode = record.get("mode") or stats.mode
+
+    def _apply_tool_results(self, record: dict) -> None:
+        message = record.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            return
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            name = self._pending_tools.pop(block.get("tool_use_id") or "", None)
+            if name is None:
+                continue
+            body = block.get("content")
+            if isinstance(body, list):
+                size = sum(len(b.get("text") or "") for b in body if isinstance(b, dict))
+            else:
+                size = len(body or "")
+            self.stats.tool_result_chars[name] += size
+            self.stats.tool_result_count[name] += 1
 
     def _apply_assistant(self, record: dict, when: datetime | None) -> None:
         stats = self.stats
@@ -255,6 +284,8 @@ class IncrementalTranscript:
             if not isinstance(block, dict) or block.get("type") != "tool_use":
                 continue
             name = block.get("name") or "unknown"
+            if tool_id := block.get("id"):
+                self._pending_tools[tool_id] = name
             stats.tool_calls += 1
             stats.tools[name] += 1
             if name in ("Task", "Agent"):
@@ -281,6 +312,8 @@ class IncrementalTranscript:
         stats.cache_read_tokens += cache_read
         stats.cache_creation_tokens += cache_creation
         stats.thinking_tokens += thinking
+        if model not in _SYNTHETIC_MODELS:
+            stats.context_tokens = inp + cache_read + cache_creation
 
         if model and model not in _SYNTHETIC_MODELS:
             accum = stats.model_accum(model)

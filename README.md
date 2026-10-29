@@ -57,6 +57,12 @@ the recorded reset time. Meters show spend, % of the estimated cap and the
 on-pace projection; below them, 30 days of daily spend with limit-hit days in red.
 The dollar figures are a proxy for quota, not a bill.
 
+**Recommendations** — concrete ways to use less quota, most urgent first:
+compact or clear sessions that re-read a very deep context every turn, sessions
+holding a large share of this week's usage, subagents and teammates running on
+a premium model, and tools whose results are routinely large. Each comes with an
+estimated saving where one can be worked out.
+
 **Agent types** — how many subagents of each type (`general-purpose`, `Explore`,
 `Plan`, and any project-defined agents) have been spawned.
 
@@ -138,6 +144,7 @@ UI confirms before sending.
 |---|---|
 | `GET /api/overview?hours=24` | Tiles, model mix, agent-type mix, activity timeline |
 | `GET /api/quota?days=30` | 5-hour and 7-day spend, estimated caps, limit hits, daily history |
+| `GET /api/recommendations` | Ways to use less quota, most urgent first |
 | `GET /api/sessions` | Sessions; `status`, `project`, `model`, `agent_type`, `q`, `sort`, `order`, `limit`, `offset` |
 | `GET /api/sessions/{id}` | One session with every subagent |
 | `GET /api/agents` | Subagents across sessions; `session_id`, `agent_type`, `model`, `live_only` |

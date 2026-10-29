@@ -23,6 +23,7 @@ from .models import (
     Overview,
     ProjectSummary,
     QuotaReport,
+    Recommendation,
     SessionStatus,
     SessionSummary,
     TokenCounts,
@@ -35,6 +36,7 @@ from .parser import (
     read_json,
 )
 from .quota import Spend, build_report
+from .recommend import SessionData, build_recommendations
 from .registry import RegistryEntry, open_tasks, read_registry
 
 SORT_KEYS = {
@@ -100,6 +102,8 @@ class SessionStore:
         self._transcripts: dict[Path, IncrementalTranscript] = {}
         self._agent_meta: dict[Path, tuple[float, dict]] = {}
         self._sessions: dict[str, SessionSummary] = {}
+        #: session id -> its main transcript, for reaching the raw stats.
+        self._session_paths: dict[str, Path] = {}
         self._last_scan = 0.0
         self._scan_seconds = 0.0
         self._generated_at = datetime.now(UTC)
@@ -122,6 +126,7 @@ class SessionStore:
     def _rescan(self) -> None:
         registry = read_registry(self.settings.sessions_dir)
         sessions: dict[str, SessionSummary] = {}
+        session_paths: dict[str, Path] = {}
         seen_paths: set[Path] = set()
 
         for project_dir in self._project_dirs():
@@ -141,6 +146,7 @@ class SessionStore:
                     entry=registry.get(session_id),
                 )
                 sessions[session_id] = summary
+                session_paths[session_id] = transcript_path
 
         # A live session that has not written a transcript yet still deserves a row.
         for session_id, entry in registry.items():
@@ -150,6 +156,7 @@ class SessionStore:
 
         self._prune(seen_paths)
         self._sessions = sessions
+        self._session_paths = session_paths
 
     def _project_dirs(self) -> list[Path]:
         root = self.settings.projects_dir
@@ -252,6 +259,9 @@ class SessionStore:
             session_id=session_id,
             project=project,
             agent_type=str(meta.get("agentType") or "unknown"),
+            base_type=meta.get("spawnedAgentType") or meta.get("agentType"),
+            task_kind=meta.get("taskKind"),
+            requested_model=meta.get("model"),
             description=str(meta.get("description") or ""),
             spawn_depth=int(meta.get("spawnDepth") or 1),
             tool_use_id=meta.get("toolUseId"),
@@ -561,6 +571,27 @@ class SessionStore:
                     )
                 hit.attempts += 1
         return build_report(ledger, list(hits.values()), days=days)
+
+    def recommendations(self) -> list[Recommendation]:
+        """Ways to spend less quota, most urgent first."""
+        week = self.quota(days=1).seven_day
+        with self._lock:
+            data = []
+            for session_id, path in self._session_paths.items():
+                reader = self._transcripts.get(path)
+                summary = self._sessions.get(session_id)
+                if reader is None or summary is None:
+                    continue
+                agents_dir = path.parent / session_id / "subagents"
+                agents = [
+                    (agent, self._transcripts[agents_dir / f"{agent.agent_id}.jsonl"].stats)
+                    for agent in summary.agents
+                    if agents_dir / f"{agent.agent_id}.jsonl" in self._transcripts
+                ]
+                data.append(SessionData(summary=summary, main=reader.stats, agents=agents))
+        return build_recommendations(
+            data, week=(week.start, week.end), now=datetime.now(UTC)
+        )
 
     def known_models(self) -> list[str]:
         return [usage.model for usage in self.overview(hours=1).models]

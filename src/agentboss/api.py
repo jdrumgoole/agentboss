@@ -14,7 +14,7 @@ import signal
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from .models import AgentSummary, Overview, QuotaReport, SessionSummary
+from .models import AgentSummary, Overview, QuotaReport, Recommendation, SessionSummary
 from .registry import signal_session
 from .store import SessionStore
 
@@ -49,6 +49,12 @@ def quota(
     """Quota consumption: spend in the current five-hour block and seven-day
     window, estimated caps from recorded limit hits, and daily history."""
     return get_store(request).quota(days=days)
+
+
+@router.get("/recommendations", response_model=list[Recommendation])
+def recommendations(request: Request) -> list[Recommendation]:
+    """Concrete ways to spend less quota, most urgent first."""
+    return get_store(request).recommendations()
 
 
 @router.get("/sessions", response_model=list[SessionSummary])
