@@ -239,7 +239,7 @@ class QuotaWindow(BaseModel):
     #: Spend at the most recent recorded rejection of this kind, if any.
     estimated_cap: float | None = None
     used_fraction: float | None = None
-    #: ``cost`` extrapolated to the end of the window at the current rate.
+    #: `cost` extrapolated to the end of the window at the current rate.
     projected_cost: float = 0.0
 
 

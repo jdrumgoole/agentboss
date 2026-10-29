@@ -30,7 +30,7 @@ It never writes to that directory.
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the app.  Pass ``settings`` to point at a different Claude home."""
+    """Build the app.  Pass `settings` to point at a different Claude home."""
     settings = settings or Settings.from_env()
     store = SessionStore(settings)
 

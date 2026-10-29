@@ -1,16 +1,16 @@
 """The live-session registry.
 
-Every running Claude Code CLI drops ``~/.claude/sessions/<pid>.json`` and keeps a
-``status`` field ("busy" / "idle") up to date.  That file is the only place the
+Every running Claude Code CLI drops `~/.claude/sessions/<pid>.json` and keeps a
+`status` field ("busy" / "idle") up to date.  That file is the only place the
 *current* state of a session is recorded, but it outlives crashes: a stale entry
 looks identical to a live one until you check the process.
 
 Liveness here is deliberately conservative.  A pid alone is not enough -- pids get
 recycled -- so the pid is also required to still *be* a Claude process, checked
-against the command name the OS reports.  (The recorded ``procStart`` string is
-not usable for this: ``ps -o lstart`` formats it per-locale and in a different
+against the command name the OS reports.  (The recorded `procStart` string is
+not usable for this: `ps -o lstart` formats it per-locale and in a different
 field order, and the two clocks disagree by an hour across a DST boundary.)  A
-single ``ps`` call covers every session.
+single `ps` call covers every session.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from .parser import read_json
 
 @dataclass
 class RegistryEntry:
-    """One ``~/.claude/sessions/<pid>.json``, plus what we learned about the pid."""
+    """One `~/.claude/sessions/<pid>.json`, plus what we learned about the pid."""
 
     pid: int
     session_id: str
@@ -48,7 +48,7 @@ class RegistryEntry:
         """Live sessions report what the CLI last wrote; dead pids are stale.
 
         The CLI only rewrites its registry file when its status changes, so a
-        quiet ``updatedAt`` means "still busy on one long tool call", not "gone".
+        quiet `updatedAt` means "still busy on one long tool call", not "gone".
         Liveness is therefore decided by the process, never by the clock.
         """
         if not self.alive:
@@ -86,7 +86,7 @@ CLAUDE_COMMANDS = ("claude", "node", "bun")
 def running_commands() -> dict[int, str]:
     """pid -> command name, for every process on the machine.
 
-    Returns an empty mapping if ``ps`` is unavailable or unusable, in which case
+    Returns an empty mapping if `ps` is unavailable or unusable, in which case
     callers fall back to a plain pid-existence check.
     """
     try:

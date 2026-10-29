@@ -1,6 +1,6 @@
 """The scanner: turn the on-disk Claude Code state into dashboard objects.
 
-One :class:`SessionStore` owns every open transcript reader for the process.  A
+One `SessionStore` owns every open transcript reader for the process.  A
 scan re-stats the tree, digests whatever was appended, and rebuilds the summary
 objects; readers persist across scans so the expensive part (parsing) is only
 ever done once per byte.
@@ -57,7 +57,7 @@ _STATUS_ORDER = {
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 #: A scan requested marginally before the interval elapses still counts as due.
-#: Callers pace themselves by sleeping for exactly ``refresh_interval``, and
+#: Callers pace themselves by sleeping for exactly `refresh_interval`, and
 #: scheduling jitter would otherwise push every other tick into the next cycle.
 _SCAN_DUE_TOLERANCE = 0.9
 
@@ -107,7 +107,7 @@ class SessionStore:
     # -- scanning -----------------------------------------------------------
 
     def scan(self, *, force: bool = False) -> None:
-        """Refresh the cache, at most once per ``refresh_interval`` unless forced."""
+        """Refresh the cache, at most once per `refresh_interval` unless forced."""
         with self._lock:
             now = time.monotonic()
             due_after = self.settings.refresh_interval * _SCAN_DUE_TOLERANCE
@@ -368,7 +368,7 @@ class SessionStore:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[SessionSummary]:
-        """Filter and sort sessions.  ``status='live'`` means busy or idle."""
+        """Filter and sort sessions.  `status='live'` means busy or idle."""
         sessions = self.all_sessions()
 
         if status and status != "all":

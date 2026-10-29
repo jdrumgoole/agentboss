@@ -1,7 +1,7 @@
 """Quota consumption.
 
 Claude Code never writes the plan's live utilisation to disk.  What it does
-write is (a) the usage of every API turn and (b) a ``quotaLimits`` object on the
+write is (a) the usage of every API turn and (b) a `quotaLimits` object on the
 synthetic assistant record it emits when a limit rejects a request::
 
     {"status": "rejected", "rateLimitType": "seven_day", "resetsAt": 1792404000, ...}
@@ -11,9 +11,9 @@ API-equivalent price (the closest public proxy for how plans meter usage), summe
 over the same windows the limits use, and each recorded rejection calibrates an
 estimated cap -- the spend in that window at the moment it was refused.
 
-* ``five_hour`` -- a block opens at the hour of the first turn after the
+* `five_hour` -- a block opens at the hour of the first turn after the
   previous block closed, and lasts five hours.
-* ``seven_day`` -- fixed weekly windows.  A recorded ``resetsAt`` pins the
+* `seven_day` -- fixed weekly windows.  A recorded `resetsAt` pins the
   anchor; without one the window is the trailing seven days.
 """
 
@@ -86,7 +86,7 @@ def five_hour_blocks(starts: Iterable[datetime]) -> list[tuple[datetime, datetim
 
 
 def weekly_window(now: datetime, anchor: datetime | None) -> tuple[datetime, datetime]:
-    """The seven-day window containing ``now``, pinned to a known reset if any."""
+    """The seven-day window containing `now`, pinned to a known reset if any."""
     if anchor is None:
         return now - SEVEN_DAYS, now
     steps = (now - anchor) // SEVEN_DAYS

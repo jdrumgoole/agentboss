@@ -1,4 +1,4 @@
-"""``python -m agentboss``."""
+"""`python -m agentboss`."""
 
 import sys
 

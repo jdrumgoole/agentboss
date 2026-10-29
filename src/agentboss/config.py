@@ -1,6 +1,6 @@
 """Locations and tunables.
 
-Everything agentboss reads lives under a Claude Code home directory (``~/.claude``
+Everything agentboss reads lives under a Claude Code home directory (`~/.claude`
 by default).  The layout it depends on:
 
     ~/.claude/
@@ -57,9 +57,9 @@ class Settings:
 def decode_project_slug(slug: str) -> str:
     """Best-effort inverse of Claude Code's cwd -> directory-name encoding.
 
-    Path separators become ``-``, which is lossy: a directory whose real name
-    contains ``-`` is indistinguishable from a separator.  We therefore only use
-    the decoded value as a display fallback -- the authoritative ``cwd`` comes
+    Path separators become `-`, which is lossy: a directory whose real name
+    contains `-` is indistinguishable from a separator.  We therefore only use
+    the decoded value as a display fallback -- the authoritative `cwd` comes
     from the transcript records themselves whenever one has been read.
     """
     if not slug.startswith("-"):

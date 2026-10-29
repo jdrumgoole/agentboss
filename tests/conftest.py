@@ -1,4 +1,4 @@
-"""A synthetic ``~/.claude`` tree, so tests never touch the real one."""
+"""A synthetic `~/.claude` tree, so tests never touch the real one."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def assistant_record(
     """One assistant record.
 
     The real format writes one record *per content block*, each repeating the
-    same ``message.usage``; helpers below rely on that to test de-duplication.
+    same `message.usage`; helpers below rely on that to test de-duplication.
     """
     return {
         "type": "assistant",
@@ -86,7 +86,7 @@ def fake_processes(monkeypatch):
     """Report this test process as a running Claude CLI.
 
     The fixture tree registers a session against our own pid; without this the
-    liveness check would correctly reject it (pytest is not ``claude``), and the
+    liveness check would correctly reject it (pytest is not `claude`), and the
     tests could not exercise the live path at all.
     """
     import agentboss.registry as registry

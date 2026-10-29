@@ -185,7 +185,7 @@ async def test_stream_pushes_an_overview(settings):
 async def test_stream_holds_quiet_when_nothing_changed(settings):
     """A tick with no real change sends a keep-alive, not another repaint.
 
-    ``generated_at`` and ``scan_seconds`` differ on every scan, so comparing whole
+    `generated_at` and `scan_seconds` differ on every scan, so comparing whole
     payloads would make every tick look like news and the client would rebuild its
     charts once a second forever.
     """

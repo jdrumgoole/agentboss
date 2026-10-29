@@ -2,7 +2,7 @@
 
 Read endpoints are unconditional.  The two control endpoints (interrupt and
 terminate a running session) are only mounted when the server was started with
-``--allow-control``, because they signal real processes that may be mid-edit.
+`--allow-control`, because they signal real processes that may be mid-edit.
 """
 
 from __future__ import annotations

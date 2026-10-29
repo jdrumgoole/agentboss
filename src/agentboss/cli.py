@@ -1,4 +1,4 @@
-"""Command line entry point: ``agentboss``."""
+"""Command line entry point: `agentboss`."""
 
 from __future__ import annotations
 

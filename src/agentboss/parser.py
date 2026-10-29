@@ -1,17 +1,17 @@
 """Incremental JSONL transcript parsing.
 
 Transcripts are append-only and can reach tens of megabytes, so re-reading them
-on every dashboard poll is not an option.  :class:`IncrementalTranscript` keeps a
-byte offset plus a running :class:`TranscriptStats` and only parses the bytes that
+on every dashboard poll is not an option.  `IncrementalTranscript` keeps a
+byte offset plus a running `TranscriptStats` and only parses the bytes that
 were appended since the last look.  If the file is truncated or replaced the
 offset is dropped and the file is re-read from the start.
 
 Two things about the on-disk format matter for correctness:
 
-* One API turn is written as *several* ``assistant`` records -- one per content
+* One API turn is written as *several* `assistant` records -- one per content
   block (thinking / text / tool_use) -- and every one of them repeats the same
-  ``message.usage``.  Counting each record would multiply tokens by the number of
-  blocks, so usage is credited once per ``message.id``.
+  `message.usage`.  Counting each record would multiply tokens by the number of
+  blocks, so usage is credited once per `message.id`.
 * The tail of a live transcript is often a partial line.  Only whole lines are
   consumed; the offset stops at the last newline.
 """
@@ -34,7 +34,7 @@ _SYNTHETIC_MODELS = {"<synthetic>", "synthetic", ""}
 
 
 def parse_timestamp(value: str | None) -> datetime | None:
-    """Parse Claude Code's ISO-8601 timestamps (``...Z``) into aware datetimes."""
+    """Parse Claude Code's ISO-8601 timestamps (`...Z`) into aware datetimes."""
     if not value:
         return None
     try:
@@ -99,7 +99,7 @@ class TranscriptStats:
 
     #: (five-minute bucket, model) -> spend, for quota windows.
     spend: dict[tuple[datetime, str], Spend] = field(default_factory=dict)
-    #: Raw ``quotaLimits`` objects from rejected requests, with their timestamp.
+    #: Raw `quotaLimits` objects from rejected requests, with their timestamp.
     limit_hits: list[tuple[datetime, dict]] = field(default_factory=list)
 
     def model_accum(self, name: str) -> ModelAccum:
@@ -310,7 +310,7 @@ class IncrementalTranscript:
 
 
 def hour_buckets(hours: int, *, now: datetime | None = None) -> list[datetime]:
-    """The last ``hours`` hour-starts, oldest first, for the activity chart."""
+    """The last `hours` hour-starts, oldest first, for the activity chart."""
     end = (now or datetime.now(UTC)).replace(minute=0, second=0, microsecond=0)
     return [end - timedelta(hours=offset) for offset in range(hours - 1, -1, -1)]
 
