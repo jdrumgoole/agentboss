@@ -169,7 +169,9 @@ def test_new_subagent_appears_on_rescan(store: SessionStore, claude_home):
 def test_missing_claude_home_is_not_an_error(tmp_path):
     from agentboss.config import Settings
 
-    store = SessionStore(Settings(claude_home=tmp_path / "nope", refresh_interval=0.0))
+    store = SessionStore(Settings(
+        claude_home=tmp_path / "nope", refresh_interval=0.0, state_dir=tmp_path / "state"
+    ))
     store.scan(force=True)
     assert store.all_sessions() == []
     assert store.overview().total_sessions == 0

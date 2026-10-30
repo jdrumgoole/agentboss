@@ -96,6 +96,9 @@ class TranscriptStats:
 
     #: hour-truncated UTC start -> [assistant turns, tokens]
     activity: dict[datetime, list[int]] = field(default_factory=dict)
+    #: hour-truncated UTC start -> [user messages, tool calls], so those totals
+    #: can be taken over any date range, not just the transcript's lifetime.
+    hourly_counts: dict[datetime, list[int]] = field(default_factory=dict)
 
     #: Context the most recent turn was given: input plus cache reads and writes.
     context_tokens: int = 0
@@ -233,6 +236,7 @@ class IncrementalTranscript:
             # Tool results are replayed as user records; only real turns count.
             if not record.get("isMeta") and not record.get("toolUseResult"):
                 stats.user_messages += 1
+                self._count_hourly(when, 0)
             self._apply_tool_results(record)
         elif kind == "ai-title":
             stats.title = record.get("aiTitle") or stats.title
@@ -246,6 +250,15 @@ class IncrementalTranscript:
             stats.permission_mode = record.get("permissionMode") or stats.permission_mode
         elif kind == "mode":
             stats.mode = record.get("mode") or stats.mode
+
+    def _count_hourly(self, when: datetime | None, index: int) -> None:
+        if when is None:
+            return
+        bucket = when.replace(minute=0, second=0, microsecond=0)
+        slot = self.stats.hourly_counts.get(bucket)
+        if slot is None:
+            slot = self.stats.hourly_counts[bucket] = [0, 0]
+        slot[index] += 1
 
     def _apply_tool_results(self, record: dict) -> None:
         message = record.get("message")
@@ -287,6 +300,7 @@ class IncrementalTranscript:
             if tool_id := block.get("id"):
                 self._pending_tools[tool_id] = name
             stats.tool_calls += 1
+            self._count_hourly(when, 1)
             stats.tools[name] += 1
             if name in ("Task", "Agent"):
                 stats.spawn_count += 1
@@ -340,6 +354,10 @@ class IncrementalTranscript:
                 cell.turns += 1
                 cell.tokens += inp + out + cache_read + cache_creation
                 cell.cost += turn_cost(model, inp, out, cache_read, cache_creation)
+                cell.input += inp
+                cell.output += out
+                cell.cache_read += cache_read
+                cell.cache_creation += cache_creation
 
 
 def hour_buckets(hours: int, *, now: datetime | None = None) -> list[datetime]:

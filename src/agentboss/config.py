@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_CLAUDE_HOME = Path.home() / ".claude"
+#: agentboss's own state (which recommendations are done); never inside ~/.claude.
+DEFAULT_STATE_DIR = Path.home() / ".agentboss"
 
 @dataclass(frozen=True)
 class Settings:
@@ -30,15 +32,19 @@ class Settings:
     refresh_interval: float = 1.0
     #: Allow the control endpoints (interrupt / terminate a running session).
     allow_control: bool = False
+    #: Where agentboss keeps its own state.
+    state_dir: Path = DEFAULT_STATE_DIR
 
     @classmethod
     def from_env(cls) -> Settings:
         home = os.environ.get("AGENTBOSS_CLAUDE_HOME")
+        state = os.environ.get("AGENTBOSS_STATE_DIR")
         return cls(
             claude_home=Path(home).expanduser() if home else DEFAULT_CLAUDE_HOME,
             refresh_interval=float(os.environ.get("AGENTBOSS_REFRESH_INTERVAL", "1.0")),
             allow_control=os.environ.get("AGENTBOSS_ALLOW_CONTROL", "").lower()
             in {"1", "true", "yes"},
+            state_dir=Path(state).expanduser() if state else DEFAULT_STATE_DIR,
         )
 
     @property
@@ -48,6 +54,10 @@ class Settings:
     @property
     def sessions_dir(self) -> Path:
         return self.claude_home / "sessions"
+
+    @property
+    def done_file(self) -> Path:
+        return self.state_dir / "done.json"
 
     @property
     def tasks_dir(self) -> Path:

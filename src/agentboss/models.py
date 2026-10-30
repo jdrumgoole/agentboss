@@ -215,6 +215,13 @@ class Overview(BaseModel):
     projects: list[ProjectSummary] = Field(default_factory=list)
     activity: list[ActivityBucket] = Field(default_factory=list)
 
+    #: The date range the activity, model and token figures cover, when one was
+    #: asked for.  Without one they are lifetime totals and a trailing window.
+    range_start: datetime | None = None
+    range_end: datetime | None = None
+    #: Width of one activity bucket: "hour" or "day".
+    activity_step: str = "hour"
+
 
 class LimitHit(BaseModel):
     """A request the plan's quota refused, as recorded in a transcript."""
@@ -269,6 +276,8 @@ class QuotaReport(BaseModel):
 class Recommendation(BaseModel):
     """A concrete way to spend less quota, with the evidence behind it."""
 
+    #: Stable across rescans (rule + what it is about), so it can be ticked off.
+    id: str
     kind: str
     severity: str  # high | medium | low
     title: str
@@ -277,3 +286,5 @@ class Recommendation(BaseModel):
     #: API-equivalent USD, when a saving can be estimated.
     estimated_savings: float | None = None
     savings_basis: str | None = None
+    #: Ticked off by the user; done items are listed after the open ones.
+    done: bool = False

@@ -10,9 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import signal
+from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from .models import AgentSummary, Overview, QuotaReport, Recommendation, SessionSummary
 from .registry import signal_session
@@ -32,29 +35,72 @@ def get_store(request: Request) -> SessionStore:
     return request.app.state.store
 
 
+RangeStart = Annotated[
+    datetime | None, Query(description="Range start (ISO 8601). Naive times are UTC.")
+]
+RangeEnd = Annotated[
+    datetime | None, Query(description="Range end, exclusive (ISO 8601). Defaults to now.")
+]
+
+
+def _range(
+    start: datetime | None, end: datetime | None
+) -> tuple[datetime | None, datetime | None]:
+    """Make a requested range timezone-aware and reject an inverted one."""
+    start = start.replace(tzinfo=UTC) if start and start.tzinfo is None else start
+    end = end.replace(tzinfo=UTC) if end and end.tzinfo is None else end
+    if start and end and end <= start:
+        raise HTTPException(status_code=422, detail="end must be after start")
+    return start, end
+
+
 @router.get("/overview", response_model=Overview)
 def overview(
     request: Request,
     hours: int = Query(24, ge=1, le=168, description="Width of the activity window."),
+    start: RangeStart = None,
+    end: RangeEnd = None,
 ) -> Overview:
-    """Headline counts, model mix, agent-type mix and the activity timeline."""
-    return get_store(request).overview(hours=hours)
+    """Headline counts, model mix, agent-type mix and the activity timeline.
+
+    A `start`/`end` range replaces the trailing `hours` window and scopes the
+    model mix and token totals to that range."""
+    start, end = _range(start, end)
+    return get_store(request).overview(hours=hours, start=start, end=end)
 
 
 @router.get("/quota", response_model=QuotaReport)
 def quota(
     request: Request,
     days: int = Query(30, ge=1, le=90, description="Days of daily spend history."),
+    start: RangeStart = None,
+    end: RangeEnd = None,
 ) -> QuotaReport:
     """Quota consumption: spend in the current five-hour block and seven-day
-    window, estimated caps from recorded limit hits, and daily history."""
-    return get_store(request).quota(days=days)
+    window, estimated caps from recorded limit hits, and daily history.
+
+    A `start`/`end` range sets the daily history instead of `days`; the
+    limit-window meters always describe the live windows."""
+    start, end = _range(start, end)
+    return get_store(request).quota(days=days, start=start, end=end)
 
 
 @router.get("/recommendations", response_model=list[Recommendation])
 def recommendations(request: Request) -> list[Recommendation]:
     """Concrete ways to spend less quota, most urgent first."""
     return get_store(request).recommendations()
+
+
+class DoneUpdate(BaseModel):
+    done: bool = True
+
+
+@router.put("/recommendations/{rec_id:path}/done", status_code=204)
+def set_recommendation_done(request: Request, rec_id: str, body: DoneUpdate) -> None:
+    """Tick a recommendation off (`done: true`) or put it back (`done: false`).
+
+    Ticks are kept in agentboss's own state directory and last a week."""
+    get_store(request).set_done(rec_id, body.done)
 
 
 @router.get("/sessions", response_model=list[SessionSummary])
@@ -65,18 +111,23 @@ def list_sessions(
     model: str | None = None,
     agent_type: str | None = None,
     q: str | None = Query(None, description="Substring match on id, project, title or prompt."),
+    start: RangeStart = None,
+    end: RangeEnd = None,
     sort: str = "last_activity",
     order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> list[SessionSummary]:
     """Every session agentboss can see, filtered and sorted."""
+    start, end = _range(start, end)
     return get_store(request).query_sessions(
         status=status,
         project=project,
         model=model,
         agent_type=agent_type,
         search=q,
+        start=start,
+        end=end,
         sort=sort,
         descending=order == "desc",
         limit=limit,
@@ -139,8 +190,14 @@ def list_filters(request: Request) -> dict:
 
 
 @router.get("/stream")
-async def stream(request: Request, hours: int = Query(24, ge=1, le=168)) -> StreamingResponse:
+async def stream(
+    request: Request,
+    hours: int = Query(24, ge=1, le=168),
+    start: RangeStart = None,
+    end: RangeEnd = None,
+) -> StreamingResponse:
     """Server-sent events: a fresh overview whenever the scan finds a change."""
+    start, end = _range(start, end)
     store = get_store(request)
     interval = max(1.0, store.settings.refresh_interval)
 
@@ -149,7 +206,7 @@ async def stream(request: Request, hours: int = Query(24, ge=1, le=168)) -> Stre
         while True:
             if await request.is_disconnected():
                 return
-            data = await asyncio.to_thread(store.overview, hours=hours)
+            data = await asyncio.to_thread(store.overview, hours=hours, start=start, end=end)
             dump = data.model_dump(mode="json")
             fingerprint = json.dumps(
                 {k: v for k, v in dump.items() if k not in _VOLATILE_FIELDS}, default=str

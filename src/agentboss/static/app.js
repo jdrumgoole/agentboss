@@ -17,7 +17,65 @@ const state = {
   modelColors: new Map(),
   filtersLoaded: false,
   chart: null,
+  // Inclusive local dates, YYYY-MM-DD.  Defaults to Monday of this week → today.
+  range: null, // set by initRange()
+  source: null,
 };
+
+/* ---------- date range ---------- */
+
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Each preset runs from the start of the current period to today.  Quarters
+// are calendar quarters: Jan, Apr, Jul and Oct.
+const PRESETS = {
+  week: (t) => new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7)),
+  month: (t) => new Date(t.getFullYear(), t.getMonth(), 1),
+  quarter: (t) => new Date(t.getFullYear(), t.getMonth() - (t.getMonth() % 3), 1),
+  year: (t) => new Date(t.getFullYear(), 0, 1),
+};
+
+function presetRange(name) {
+  const today = new Date();
+  return { from: isoDate(PRESETS[name](today)), to: isoDate(today) };
+}
+
+function thisWeek() {
+  return presetRange('week');
+}
+
+// The preset a range matches, or 'custom' when the dates were picked by hand.
+// Presets can coincide (October is both this month and this quarter), so the
+// one already chosen wins while it still fits.
+function presetOf(range, current) {
+  const fits = (name) => {
+    const preset = presetRange(name);
+    return preset.from === range.from && preset.to === range.to;
+  };
+  if (current in PRESETS && fits(current)) return current;
+  return Object.keys(PRESETS).find(fits) || 'custom';
+}
+
+// Local midnight of `from` to local midnight after `to`, as instants.
+function rangeParams() {
+  const [fy, fm, fd] = state.range.from.split('-').map(Number);
+  const [ty, tm, td] = state.range.to.split('-').map(Number);
+  return {
+    start: new Date(fy, fm - 1, fd).toISOString(),
+    end: new Date(ty, tm - 1, td + 1).toISOString(),
+  };
+}
+
+function rangeQuery() {
+  return new URLSearchParams(rangeParams()).toString();
+}
+
+function rangeLabel() {
+  const fmt = (iso) => new Date(`${iso}T00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  return state.range.from === state.range.to ? fmt(state.range.from) : `${fmt(state.range.from)} – ${fmt(state.range.to)}`;
+}
 
 /* ---------- formatting ---------- */
 
@@ -114,12 +172,12 @@ function renderTiles(o) {
       sub: `${o.busy_sessions} busy · ${o.idle_sessions} idle`,
     },
     {
-      label: 'Sessions on disk',
+      label: 'Sessions in range',
       value: o.total_sessions,
       sub: `${o.projects.length} project${o.projects.length === 1 ? '' : 's'}`,
     },
     {
-      label: 'Agents',
+      label: 'Agents in range',
       value: o.total_agents,
       sub: `${o.subagents} nested · max depth ${o.max_spawn_depth}`,
     },
@@ -129,7 +187,7 @@ function renderTiles(o) {
       sub: o.models.length ? shortModel(o.models[0].model) + ' leads' : 'none recorded',
     },
     {
-      label: 'Tokens billed',
+      label: 'Tokens in range',
       value: compact(o.tokens.total),
       sub: `${compact(o.tokens.output)} out · ${compact(o.tokens.cache_read)} cached`,
     },
@@ -243,12 +301,12 @@ function renderQuota(q) {
   const hits = q.limit_hits.slice(-3).reverse().map((h) =>
     `${h.limit_type.replace('_', '-')} limit on ${new Date(h.at).toLocaleDateString()} at ${h.spend_at_hit != null ? usd(h.spend_at_hit) : '?'}`);
   document.getElementById('quota-hits').textContent = hits.length
-    ? `Daily spend, last ${q.daily.length} days (red = limit hit). Recent hits: ${hits.join(' · ')}`
-    : `Daily spend, last ${q.daily.length} days. No limit hits recorded, so no cap estimate yet.`;
+    ? `Daily spend, ${rangeLabel()} (red = limit hit). Recent hits: ${hits.join(' · ')}`
+    : `Daily spend, ${rangeLabel()}. No limit hits recorded, so no cap estimate yet.`;
 }
 
 async function refreshQuota() {
-  const response = await fetch('/api/quota');
+  const response = await fetch(`/api/quota?${rangeQuery()}`);
   if (response.ok) renderQuota(await response.json());
 }
 
@@ -262,28 +320,51 @@ function renderRecs(recs) {
     host.replaceChildren(el('p', { class: 'empty', text: 'Nothing to flag: no deep contexts, heavy sessions or oversized tool output right now.' }));
     return;
   }
-  const card = (r) => el('div', { class: `rec rec-${r.severity}` },
+  const card = (r) => el('div', { class: `rec rec-${r.severity}${r.done ? ' rec-done' : ''}` },
     el('div', { class: 'rec-head' },
+      el('input', {
+        type: 'checkbox', class: 'rec-check', checked: r.done,
+        title: r.done ? 'Mark as not done' : 'Mark as done (hidden for a week)',
+        'aria-label': `Done: ${r.title}`,
+        onchange: (event) => markDone(r.id, event.target.checked),
+      }),
       el('span', { class: 'rec-sev', text: r.severity }),
       el('span', { class: 'rec-title', text: r.title }),
       r.estimated_savings != null
         ? el('span', { class: 'rec-save', text: `save ~${usd(r.estimated_savings)} ${r.savings_basis || ''}` })
         : null,
     ),
-    el('p', { class: 'rec-detail', text: r.detail }),
-    r.session_id ? el('a', {
+    r.done ? null : el('p', { class: 'rec-detail', text: r.detail }),
+    r.session_id && !r.done ? el('a', {
       class: 'rec-link', href: `#/session/${r.session_id}`, text: 'open session',
       onclick: (event) => { event.preventDefault(); openDrawer(r.session_id); },
     }) : null,
   );
-  const shown = recs.slice(0, RECS_SHOWN).map(card);
-  const rest = recs.slice(RECS_SHOWN);
+  const open = recs.filter((r) => !r.done);
+  const done = recs.filter((r) => r.done);
+  const shown = open.length
+    ? open.slice(0, RECS_SHOWN).map(card)
+    : [el('p', { class: 'empty', text: 'All done.' })];
+  const rest = open.slice(RECS_SHOWN);
   if (rest.length) {
-    const more = el('details', { class: 'rec-more' },
-      el('summary', { text: `${rest.length} more` }), ...rest.map(card));
-    shown.push(more);
+    shown.push(el('details', { class: 'rec-more' },
+      el('summary', { text: `${rest.length} more` }), ...rest.map(card)));
+  }
+  if (done.length) {
+    const wasOpen = host.querySelector('.rec-done-list')?.open;
+    shown.push(el('details', { class: 'rec-more rec-done-list', open: !!wasOpen },
+      el('summary', { text: `${done.length} done` }), ...done.map(card)));
   }
   host.replaceChildren(...shown);
+}
+
+async function markDone(id, done) {
+  await fetch(`/api/recommendations/${encodeURIComponent(id)}/done`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ done }),
+  });
+  refreshRecs();
 }
 
 async function refreshRecs() {
@@ -386,7 +467,9 @@ function buildActivity(host, buckets, width, starts) {
       y: height - 6,
       'text-anchor': i === buckets.length - 1 ? 'end' : 'middle',
     });
-    label.textContent = `${String(when.getHours()).padStart(2, '0')}:00`;
+    label.textContent = state.overview?.activity_step === 'day' || buckets.length > 24
+      ? when.toLocaleDateString([], { weekday: 'short', day: 'numeric' })
+      : `${String(when.getHours()).padStart(2, '0')}:00`;
   });
 
   host.replaceChildren(svg);
@@ -400,7 +483,7 @@ function updateActivity(buckets) {
   const max = Math.max(...buckets.map((b) => b.messages), 1);
 
   chart.buckets = buckets;
-  chart.svg.setAttribute('aria-label', `Assistant turns per hour; peak ${max}`);
+  chart.svg.setAttribute('aria-label', `Assistant turns per ${state.overview?.activity_step || 'hour'}; peak ${max}`);
   chart.axisLabels.forEach((label, i) => {
     label.textContent = compact(Math.round(max * (1 - [0, 0.5, 1][i])));
   });
@@ -421,7 +504,12 @@ function showTooltip(event, bucket) {
   const tip = document.getElementById('tooltip');
   const when = new Date(bucket.start);
   tip.replaceChildren(
-    el('div', { class: 't-title', text: when.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }),
+    el('div', {
+      class: 't-title',
+      text: state.overview?.activity_step === 'day'
+        ? when.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+        : when.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    }),
     el('div', { text: `${nf.format(bucket.messages)} assistant turn${bucket.messages === 1 ? '' : 's'}` }),
     el('div', { text: `${compact(bucket.tokens)} tokens` }),
   );
@@ -675,7 +763,7 @@ async function control(sessionId, action) {
 /* ---------- data ---------- */
 
 function queryString() {
-  const params = new URLSearchParams({ sort: state.sort, order: state.order });
+  const params = new URLSearchParams({ sort: state.sort, order: state.order, ...rangeParams() });
   for (const [key, value] of Object.entries(state.filters)) {
     if (value) params.set(key, value);
   }
@@ -697,6 +785,12 @@ function applyOverview(overview) {
   renderModelBars(overview);
   renderAgentBars(overview);
   renderActivity(overview);
+  document.getElementById('activity-caption').textContent =
+    `Assistant turns per ${overview.activity_step}, ${rangeLabel()}`;
+  document.getElementById('agents-caption').textContent =
+    `Subagents spawned, by agent type, ${rangeLabel()}`;
+  document.getElementById('models-caption').textContent =
+    `Tokens billed per model, sessions and subagents combined, ${rangeLabel()}`;
   refreshQuota();
   refreshRecs();
   if (!state.filtersLoaded) loadFilters();
@@ -727,7 +821,8 @@ function setPulse(kind, text) {
 }
 
 function connect() {
-  const source = new EventSource('/api/stream');
+  if (state.source) state.source.close();
+  const source = state.source = new EventSource(`/api/stream?${rangeQuery()}`);
   source.addEventListener('overview', (event) => {
     const overview = JSON.parse(event.data);
     applyOverview(overview);
@@ -745,7 +840,57 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
 }
 
+function setRange(range) {
+  state.range = range;
+  const from = document.getElementById('r-from');
+  const to = document.getElementById('r-to');
+  from.value = range.from;
+  to.value = range.to;
+  from.max = range.to;
+  to.min = range.from;
+  to.max = isoDate(new Date());
+  const preset = document.getElementById('r-preset');
+  preset.value = presetOf(range, preset.value);
+}
+
+function initRange() {
+  setRange(thisWeek());
+  const apply = () => {
+    const from = document.getElementById('r-from').value;
+    const to = document.getElementById('r-to').value;
+    if (!from || !to || from > to) return;
+    setRange({ from, to });
+    state.chart = null;
+    refreshSessions();
+    connect();
+  };
+  document.getElementById('r-from').addEventListener('change', () => {
+    const prompting = document.getElementById('r-preset').value === 'custom';
+    apply();
+    // Mid-way through a custom pick: the start is set, so ask for the end.
+    if (prompting) {
+      const to = document.getElementById('r-to');
+      to.focus();
+      try { to.showPicker(); } catch { /* not supported, or no user gesture */ }
+    }
+  });
+  document.getElementById('r-to').addEventListener('change', apply);
+  document.getElementById('r-preset').addEventListener('change', (event) => {
+    const name = event.target.value;
+    if (name !== 'custom') {
+      setRange(presetRange(name));
+      apply();
+      return;
+    }
+    // Custom keeps the current dates and hands over to the start picker.
+    const from = document.getElementById('r-from');
+    from.focus();
+    try { from.showPicker(); } catch { /* not supported, or no user gesture */ }
+  });
+}
+
 function init() {
+  initRange();
   document.getElementById('f-search').addEventListener('input', debounce((event) => {
     state.filters.q = event.target.value.trim();
     refreshSessions();

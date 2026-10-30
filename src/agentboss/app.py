@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -27,6 +29,18 @@ reports, live: which sessions exist, which are running, which models they are
 burning tokens on, and how many agents and subagents each one has spawned.
 It never writes to that directory.
 """
+
+
+def asset_version(name: str) -> str:
+    """A short content hash, appended to asset URLs so a changed file is never
+    served from a stale browser cache."""
+    return hashlib.sha256((STATIC_DIR / name).read_bytes()).hexdigest()[:12]
+
+
+def this_week(today: date | None = None) -> tuple[date, date]:
+    """Monday of the current week through today: the dashboard's default range."""
+    today = today or date.today()
+    return today - timedelta(days=today.weekday()), today
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -54,6 +68,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def dashboard(request: Request) -> HTMLResponse:
+        # The page script recomputes this in the browser's own timezone; the
+        # server's copy means the inputs are never blank while it loads.
+        range_from, range_to = this_week()
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -61,6 +78,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "version": __version__,
                 "claude_home": str(settings.claude_home),
                 "allow_control": settings.allow_control,
+                "range_from": range_from.isoformat(),
+                "range_to": range_to.isoformat(),
+                "css_version": asset_version("app.css"),
+                "js_version": asset_version("app.js"),
             },
         )
 

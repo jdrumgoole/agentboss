@@ -226,7 +226,9 @@ def claude_home(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def settings(claude_home: Path) -> Settings:
-    return Settings(claude_home=claude_home, refresh_interval=0.0)
+    return Settings(
+        claude_home=claude_home, refresh_interval=0.0, state_dir=claude_home.parent / "state"
+    )
 
 
 @pytest.fixture

@@ -8,10 +8,11 @@ ever done once per byte.
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .config import Settings, decode_project_slug
@@ -39,6 +40,9 @@ from .quota import Spend, build_report
 from .recommend import SessionData, build_recommendations
 from .registry import RegistryEntry, open_tasks, read_registry
 
+#: How long a ticked-off recommendation stays done before it may resurface.
+DONE_TTL = timedelta(days=7)
+
 SORT_KEYS = {
     "last_activity",
     "started",
@@ -62,6 +66,9 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 #: Callers pace themselves by sleeping for exactly `refresh_interval`, and
 #: scheduling jitter would otherwise push every other tick into the next cycle.
 _SCAN_DUE_TOLERANCE = 0.9
+
+#: Ranges up to this long chart hourly; longer ones chart one bar per day.
+_HOURLY_RANGE_LIMIT = timedelta(days=7)
 
 
 def _tokens_from(stats: TranscriptStats) -> TokenCounts:
@@ -373,6 +380,8 @@ class SessionStore:
         model: str | None = None,
         agent_type: str | None = None,
         search: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
         sort: str = "last_activity",
         descending: bool = True,
         limit: int | None = None,
@@ -398,6 +407,8 @@ class SessionStore:
         if search:
             needle = search.lower()
             sessions = [s for s in sessions if _matches(s, needle)]
+        if start or end:
+            sessions = [s for s in sessions if _overlaps(s, start, end)]
 
         sessions.sort(key=_sort_key(sort), reverse=descending)
         if offset:
@@ -435,9 +446,21 @@ class SessionStore:
         agents.sort(key=lambda a: a.last_activity_at or _EPOCH, reverse=True)
         return agents[:limit] if limit is not None else agents
 
-    def overview(self, *, hours: int = 24) -> Overview:
-        """The dashboard's headline numbers, model mix and activity timeline."""
+    def overview(
+        self,
+        *,
+        hours: int = 24,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Overview:
+        """The dashboard's headline numbers, model mix and activity timeline.
+
+        With `start`/`end` everything but the live counts covers that range:
+        sessions, projects and agents active in it, and the messages, tool
+        calls, tokens and models recorded in it.  Busy/idle stay as of now.
+        """
         sessions = self.all_sessions()
+        in_range = (lambda item: _overlaps(item, start, end)) if start else (lambda _: True)
         with self._lock:
             scan_seconds, generated_at = self._scan_seconds, self._generated_at
 
@@ -445,7 +468,6 @@ class SessionStore:
             generated_at=generated_at,
             claude_home=str(self.settings.claude_home),
             scan_seconds=round(scan_seconds, 4),
-            total_sessions=len(sessions),
         )
 
         models: dict[str, ModelUsage] = {}
@@ -457,19 +479,23 @@ class SessionStore:
                 overview.busy_sessions += 1
             elif session.status is SessionStatus.IDLE:
                 overview.idle_sessions += 1
+            if session.is_live:
+                overview.live_agents += session.agent_count
+            if not in_range(session):
+                continue
+            overview.total_sessions += 1
 
             overview.total_messages += session.user_messages + session.assistant_messages
             overview.total_tool_calls += session.tool_calls
             overview.tokens.add(session.tokens)
             overview.tokens.add(session.agent_tokens)
-            overview.total_agents += session.agent_count
-            overview.subagents += session.subagent_count
-            overview.max_spawn_depth = max(overview.max_spawn_depth, session.max_spawn_depth)
-            if session.is_live:
-                overview.live_agents += session.agent_count
-
             _merge_models(models, session.models)
             for agent in session.agents:
+                if not in_range(agent):
+                    continue
+                overview.total_agents += 1
+                overview.subagents += int(agent.spawn_depth > 1)
+                overview.max_spawn_depth = max(overview.max_spawn_depth, agent.spawn_depth)
                 agent_types[agent.agent_type] = agent_types.get(agent.agent_type, 0) + 1
                 overview.total_messages += agent.messages
                 overview.total_tool_calls += agent.tool_calls
@@ -482,7 +508,7 @@ class SessionStore:
                 )
             project.sessions += 1
             project.live_sessions += int(session.is_live)
-            project.agents += session.agent_count
+            project.agents += sum(1 for agent in session.agents if in_range(agent))
             project.tokens.add(session.tokens)
             project.tokens.add(session.agent_tokens)
             if session.last_activity_at and (
@@ -503,35 +529,103 @@ class SessionStore:
             key=lambda p: p.last_activity_at or _EPOCH,
             reverse=True,
         )
-        overview.activity = self.activity(hours=hours)
+        if start is None:
+            overview.activity = self.activity(hours=hours)
+            return overview
+
+        end = end or datetime.now(UTC)
+        overview.range_start, overview.range_end = start, end
+        overview.activity_step = "hour" if end - start <= _HOURLY_RANGE_LIMIT else "day"
+        overview.activity = self.activity(start=start, end=end)
+        overview.models, overview.tokens = self._range_usage(start, end)
+        overview.total_messages, overview.total_tool_calls = self._range_counts(start, end)
         return overview
 
-    def activity(self, *, hours: int = 24) -> list[ActivityBucket]:
-        """Assistant turns and tokens per hour, across every session and agent."""
+    def _range_counts(self, start: datetime, end: datetime) -> tuple[int, int]:
+        """Messages (user and assistant) and tool calls recorded within a range."""
+        with self._lock:
+            readers = list(self._transcripts.values())
+        messages = tool_calls = 0
+        for reader in readers:
+            for bucket, (turns, _tokens) in reader.stats.activity.items():
+                if start <= bucket < end:
+                    messages += turns
+            for bucket, (users, tools) in reader.stats.hourly_counts.items():
+                if start <= bucket < end:
+                    messages += users
+                    tool_calls += tools
+        return messages, tool_calls
+
+    def _range_usage(
+        self, start: datetime, end: datetime
+    ) -> tuple[list[ModelUsage], TokenCounts]:
+        """Model mix and token totals from the spend ledger, within a range."""
+        with self._lock:
+            readers = list(self._transcripts.values())
+        models: dict[str, ModelUsage] = {}
+        totals = TokenCounts()
+        for reader in readers:
+            for (bucket, model), cell in reader.stats.spend.items():
+                if not start <= bucket < end:
+                    continue
+                tokens = TokenCounts(
+                    input=cell.input,
+                    output=cell.output,
+                    cache_read=cell.cache_read,
+                    cache_creation=cell.cache_creation,
+                )
+                _merge_models(models, [ModelUsage(model=model, messages=cell.turns, tokens=tokens)])
+                totals.add(tokens)
+        usage = sorted(models.values(), key=lambda m: (-m.tokens.total, m.model))
+        return usage, totals
+
+    def activity(
+        self,
+        *,
+        hours: int = 24,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> list[ActivityBucket]:
+        """Assistant turns and tokens per hour, across every session and agent.
+
+        With `start`/`end`, buckets run from `start` -- hourly for up to a week,
+        daily beyond that, so day bars fall on `start`'s own midnights.
+        """
         self.scan()
-        buckets = hour_buckets(hours)
-        window = {bucket: [0, 0] for bucket in buckets}
-        cutoff = buckets[0]
+        if start is None:
+            buckets = hour_buckets(hours)
+            step = timedelta(hours=1)
+        else:
+            end = end or datetime.now(UTC)
+            step = timedelta(hours=1) if end - start <= _HOURLY_RANGE_LIMIT else timedelta(days=1)
+            count = max(1, -(-(end - start) // step))
+            buckets = [start + step * i for i in range(count)]
+        origin = buckets[0]
+        window = [[0, 0] for _ in buckets]
 
         with self._lock:
             readers = list(self._transcripts.values())
 
         for reader in readers:
             for bucket, (messages, tokens) in reader.stats.activity.items():
-                if bucket < cutoff:
+                index = (bucket - origin) // step
+                if not 0 <= index < len(buckets):
                     continue
-                slot = window.get(bucket)
-                if slot is None:
-                    continue
-                slot[0] += messages
-                slot[1] += tokens
+                window[index][0] += messages
+                window[index][1] += tokens
 
         return [
-            ActivityBucket(start=bucket, messages=window[bucket][0], tokens=window[bucket][1])
-            for bucket in buckets
+            ActivityBucket(start=bucket, messages=slot[0], tokens=slot[1])
+            for bucket, slot in zip(buckets, window, strict=True)
         ]
 
-    def quota(self, *, days: int = 30) -> QuotaReport:
+    def quota(
+        self,
+        *,
+        days: int = 30,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> QuotaReport:
         """Spend per limit window, calibrated against recorded rejections."""
         self.scan()
         with self._lock:
@@ -570,7 +664,7 @@ class SessionStore:
                         attempts=attempts,
                     )
                 hit.attempts += 1
-        return build_report(ledger, list(hits.values()), days=days)
+        return build_report(ledger, list(hits.values()), days=days, start=start, end=end)
 
     def recommendations(self) -> list[Recommendation]:
         """Ways to spend less quota, most urgent first."""
@@ -589,9 +683,43 @@ class SessionStore:
                     if agents_dir / f"{agent.agent_id}.jsonl" in self._transcripts
                 ]
                 data.append(SessionData(summary=summary, main=reader.stats, agents=agents))
-        return build_recommendations(
-            data, week=(week.start, week.end), now=datetime.now(UTC)
-        )
+        recs = build_recommendations(data, week=(week.start, week.end), now=datetime.now(UTC))
+        done = self._read_done()
+        for rec in recs:
+            rec.done = rec.id in done
+        recs.sort(key=lambda r: r.done)  # stable: keeps the urgency order within each
+        return recs
+
+    def _read_done(self) -> dict[str, str]:
+        """Done recommendation ids -> when they were ticked, minus expired ones.
+
+        A tick lasts `DONE_TTL`: long enough to stop nagging, short enough that a
+        problem which has come back (a session whose context has regrown) resurfaces.
+        """
+        try:
+            done = json.loads(self.settings.done_file.read_text())
+        except (OSError, ValueError):
+            return {}
+        cutoff = datetime.now(UTC) - DONE_TTL
+        return {
+            rec_id: at
+            for rec_id, at in done.items()
+            if isinstance(at, str) and datetime.fromisoformat(at) >= cutoff
+        }
+
+    def set_done(self, rec_id: str, done: bool) -> None:
+        """Tick a recommendation off, or put it back."""
+        with self._lock:
+            ticked = self._read_done()
+            if done:
+                ticked[rec_id] = datetime.now(UTC).isoformat()
+            else:
+                ticked.pop(rec_id, None)
+            path = self.settings.done_file
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(ticked, indent=2))
+            tmp.replace(path)
 
     def known_models(self) -> list[str]:
         return [usage.model for usage in self.overview(hours=1).models]
@@ -618,6 +746,17 @@ def _merge_models(target: dict[str, ModelUsage], source: list[ModelUsage]) -> No
         else:
             existing.messages += usage.messages
             existing.tokens.add(usage.tokens)
+
+
+def _overlaps(
+    item: SessionSummary | AgentSummary, start: datetime | None, end: datetime | None
+) -> bool:
+    """Whether a session or agent was active at any point in [start, end)."""
+    first = item.started_at or item.last_activity_at
+    last = item.last_activity_at or item.started_at
+    if first is None or last is None:
+        return False
+    return (start is None or last >= start) and (end is None or first < end)
 
 
 def _matches(session: SessionSummary, needle: str) -> bool:

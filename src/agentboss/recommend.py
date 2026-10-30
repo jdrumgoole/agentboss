@@ -111,6 +111,7 @@ def context_rules(sessions: list[SessionData], now: datetime) -> list[Recommenda
         per_100 = (ctx - LEAN_CONTEXT) * _cache_read_price(_main_model(data)) * 100
         recs.append(
             Recommendation(
+                id=f"context:{s.session_id}",
                 kind="context",
                 severity="high" if ctx >= CONTEXT_HIGH else "medium",
                 title=f"Compact or clear “{data.label}”",
@@ -147,6 +148,7 @@ def window_rules(
         split = f" Subagents account for {agent_cost / cost:.0%} of it." if agent_cost else ""
         recs.append(
             Recommendation(
+                id=f"window:{data.summary.session_id}",
                 kind="window",
                 severity="high" if share >= 0.5 else "medium",
                 title=f"“{data.label}” has used {share:.0%} of this week's usage",
@@ -226,6 +228,7 @@ def subagent_rules(sessions: list[SessionData], now: datetime) -> list[Recommend
             how = f"Set `model: sonnet` in the {base} agent definition."
         recs.append(
             Recommendation(
+                id=f"subagent_model:{what}",
                 kind="subagent_model",
                 severity="medium" if g.saving >= 100 else "low",
                 title=f"Run {what}s on Sonnet",
@@ -262,6 +265,7 @@ def tool_rules(sessions: list[SessionData], now: datetime) -> list[Recommendatio
             continue
         recs.append(
             Recommendation(
+                id=f"tool_output:{name}",
                 kind="tool_output",
                 severity="medium" if avg_tokens >= 4 * TOOL_TOKENS_WARN else "low",
                 title=f"{name} results are large",

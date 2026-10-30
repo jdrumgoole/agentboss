@@ -72,6 +72,10 @@ class Spend:
     turns: int = 0
     tokens: int = 0
     cost: float = 0.0
+    input: int = 0
+    output: int = 0
+    cache_read: int = 0
+    cache_creation: int = 0
 
 
 def five_hour_blocks(starts: Iterable[datetime]) -> list[tuple[datetime, datetime]]:
@@ -100,7 +104,11 @@ def build_report(
     *,
     now: datetime | None = None,
     days: int = 30,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> QuotaReport:
+    """`start`/`end` replace the trailing `days` of daily history with a range;
+    days then begin at `start`'s local midnight, in its own UTC offset."""
     now = now or datetime.now(UTC)
     per_bucket: dict[datetime, float] = {}
     for (bucket, _model), spend in ledger.items():
@@ -156,16 +164,20 @@ def build_report(
     five = window("five_hour", *(current or (now, now + FIVE_HOURS)), active=current is not None)
     week = window("seven_day", *weekly_window(now, anchor), active=True)
 
-    first_day = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    daily: dict[datetime, SpendBucket] = {}
-    for offset in range(days):
-        day = first_day + timedelta(days=offset)
-        daily[day] = SpendBucket(start=day)
+    if start is not None:
+        first_day = start
+        days = max(1, -(-((end or now) - start) // timedelta(days=1)))
+    else:
+        first_day = (now - timedelta(days=days - 1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    days_list = [first_day + timedelta(days=offset) for offset in range(days)]
+    daily = {day: SpendBucket(start=day) for day in days_list}
     for (bucket, model), s in ledger.items():
-        day = bucket.replace(hour=0, minute=0)
-        slot = daily.get(day)
-        if slot is None:
+        index = (bucket - first_day) // timedelta(days=1)
+        if not 0 <= index < days:
             continue
+        slot = daily[days_list[index]]
         slot.cost = round(slot.cost + s.cost, 4)
         slot.tokens += s.tokens
         slot.models[model] = round(slot.models.get(model, 0.0) + s.cost, 4)

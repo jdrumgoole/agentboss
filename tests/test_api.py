@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from agentboss.app import create_app
-from tests.conftest import ENDED_ID, LIVE_ID
+from tests.conftest import BASE, ENDED_ID, LIVE_ID
 
 
 @pytest.fixture
@@ -238,3 +239,117 @@ def test_recommendations_endpoint(client):
     assert isinstance(body, list)
     for rec in body:
         assert rec["severity"] in {"high", "medium", "low"}
+
+
+def _range_query(start, end) -> str:
+    return f"start={start.isoformat()}&end={end.isoformat()}".replace("+", "%2B")
+
+
+def test_overview_range_scopes_activity_and_models(client):
+    start = BASE - timedelta(days=1)
+    body = client.get(f"/api/overview?{_range_query(start, BASE + timedelta(days=1))}").json()
+    assert body["activity_step"] == "hour"
+    assert len(body["activity"]) == 48
+    assert sum(b["messages"] for b in body["activity"]) > 0
+    assert body["models"] and body["tokens"]["total"] > 0
+    lifetime = client.get("/api/overview").json()
+    # Everything with a timestamp falls in this range; only the ghost does not.
+    assert body["total_sessions"] == lifetime["total_sessions"] - 1
+    assert body["total_agents"] == lifetime["total_agents"]
+    assert body["agent_types"] == lifetime["agent_types"]
+    assert body["total_messages"] == lifetime["total_messages"]
+    assert body["total_tool_calls"] == lifetime["total_tool_calls"]
+
+    # A range with no turns in it leaves the model mix and token tile empty.
+    empty = client.get(
+        f"/api/overview?{_range_query(BASE - timedelta(days=60), BASE - timedelta(days=30))}"
+    ).json()
+    assert empty["activity_step"] == "day"
+    assert len(empty["activity"]) == 30
+    assert empty["models"] == []
+    assert empty["tokens"]["total"] == 0
+    assert empty["total_sessions"] == empty["total_agents"] == 0
+    assert empty["total_messages"] == empty["total_tool_calls"] == 0
+    assert empty["agent_types"] == {} and empty["projects"] == []
+    # Live counts describe now, whatever the range.
+    assert empty["live_sessions"] == 1
+
+
+def test_range_must_not_be_inverted(client):
+    query = _range_query(BASE, BASE - timedelta(days=1))
+    assert client.get(f"/api/overview?{query}").status_code == 422
+
+
+def test_sessions_filtered_by_range(client):
+    query = _range_query(BASE - timedelta(days=60), BASE - timedelta(days=30))
+    assert client.get(f"/api/sessions?status=all&{query}").json() == []
+    # The ghost registry entry has no timestamps, so no range can place it.
+    query = _range_query(BASE - timedelta(days=1), BASE + timedelta(days=1))
+    found = {s["session_id"] for s in client.get(f"/api/sessions?status=all&{query}").json()}
+    assert found == {LIVE_ID, ENDED_ID}
+
+
+def test_quota_daily_follows_range(client):
+    start = BASE.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=2)
+    body = client.get(f"/api/quota?{_range_query(start, start + timedelta(days=3))}").json()
+    assert len(body["daily"]) == 3
+    assert body["daily"][0]["start"].startswith(start.date().isoformat())
+    assert sum(d["cost"] for d in body["daily"]) > 0
+
+
+def test_dashboard_prefills_this_week_and_busts_asset_cache(client):
+    from datetime import date
+
+    from agentboss.app import this_week
+
+    assert this_week(date(2026, 10, 29)) == (date(2026, 10, 26), date(2026, 10, 29))
+    assert this_week(date(2026, 10, 26)) == (date(2026, 10, 26), date(2026, 10, 26))
+    monday, today = this_week()
+    html = client.get("/").text
+    assert f'id="r-from" title="Range start" value="{monday.isoformat()}"' in html
+    assert f'value="{today.isoformat()}"' in html
+    assert "/static/app.js?v=" in html and "/static/app.css?v=" in html
+
+
+def test_recommendation_can_be_ticked_done(client, monkeypatch):
+    import agentboss.store as store_module
+    from agentboss.models import Recommendation
+
+    def fake(*_args, **_kwargs):
+        return [
+            Recommendation(
+                id=f"tool_output:{n}",
+                kind="tool_output",
+                severity="low",
+                title=f"{n} results are large",
+                detail="...",
+            )
+            for n in ("Read", "Bash")
+        ]
+
+    monkeypatch.setattr(store_module, "build_recommendations", fake)
+    assert [r["done"] for r in client.get("/api/recommendations").json()] == [False, False]
+
+    assert (
+        client.put("/api/recommendations/tool_output:Read/done", json={"done": True}).status_code
+        == 204
+    )
+    body = client.get("/api/recommendations").json()
+    assert [(r["id"], r["done"]) for r in body] == [
+        ("tool_output:Bash", False),
+        ("tool_output:Read", True),
+    ]
+
+    client.put("/api/recommendations/tool_output:Read/done", json={"done": False})
+    assert not any(r["done"] for r in client.get("/api/recommendations").json())
+
+
+def test_done_ticks_expire(store, monkeypatch):
+    import json
+
+    from agentboss.store import DONE_TTL
+
+    store.set_done("context:x", True)
+    stale = (datetime.now(UTC) - DONE_TTL - timedelta(hours=1)).isoformat()
+    store.settings.done_file.write_text(json.dumps({"context:x": stale}))
+    assert store._read_done() == {}

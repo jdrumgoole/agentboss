@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>agentboss</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ css_version }}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%232a78d6'/></svg>">
 </head>
 <body>
@@ -14,6 +14,18 @@
     <h1 class="wordmark">agentboss<span> · Claude session control</span></h1>
     <span class="home">{{ claude_home }}</span>
     <span class="spacer"></span>
+    <div class="range" role="group" aria-label="Date range">
+      <input type="date" id="r-from" title="Range start" value="{{ range_from }}" max="{{ range_to }}">
+      <span class="range-sep">to</span>
+      <input type="date" id="r-to" title="Range end (inclusive)" value="{{ range_to }}" min="{{ range_from }}" max="{{ range_to }}">
+      <select id="r-preset" title="Date range">
+        <option value="week" selected>this week</option>
+        <option value="month">this month</option>
+        <option value="quarter">this quarter</option>
+        <option value="year">this year</option>
+        <option value="custom">custom…</option>
+      </select>
+    </div>
     <span class="pulse" id="pulse"><span class="dot"></span><span id="pulse-text">connecting…</span></span>
     <button class="ghost" id="theme-toggle" type="button" title="Switch theme">theme</button>
   </header>
@@ -30,7 +42,7 @@
 
   <div class="panel recs-panel">
     <h2>Recommendations</h2>
-    <p class="caption">Ways to use less quota, most urgent first. Savings are API-equivalent, like the quota figures.</p>
+    <p class="caption">Ways to use less quota, most urgent first. Savings are API-equivalent, like the quota figures. Tick one off and it stays done for a week.</p>
     <div class="recs" id="recs"></div>
   </div>
 
@@ -43,13 +55,13 @@
 
     <div class="panel">
       <h2>Models</h2>
-      <p class="caption">Tokens billed per model, sessions and subagents combined</p>
+      <p class="caption" id="models-caption">Tokens billed per model, sessions and subagents combined</p>
       <div class="bars" id="model-bars"></div>
     </div>
 
     <div class="panel">
       <h2>Agent types</h2>
-      <p class="caption">Subagents spawned, by agent type</p>
+      <p class="caption" id="agents-caption">Subagents spawned, by agent type</p>
       <div class="bars" id="agent-bars"></div>
     </div>
   </div>
@@ -93,6 +105,6 @@
 <aside class="drawer" id="drawer" hidden aria-label="Session detail"></aside>
 <div class="tooltip" id="tooltip" hidden></div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ js_version }}"></script>
 </body>
 </html>
