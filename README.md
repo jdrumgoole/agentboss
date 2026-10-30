@@ -13,6 +13,19 @@ agentboss is a read-only observer. It reads the Claude Code state directory
 
 ## Install
 
+Install it as a standalone command with its own isolated environment, no
+virtualenv to activate:
+
+```bash
+uv tool install git+https://github.com/jdrumgoole/agentboss.git
+# or: pipx install git+https://github.com/jdrumgoole/agentboss.git
+```
+
+`agentboss` is then on your `PATH` (`~/.local/bin`). Upgrade with
+`uv tool upgrade agentboss`; remove with `uv tool uninstall agentboss`.
+
+To work on agentboss itself, install it editable in a venv instead:
+
 ```bash
 uv venv --python 3.12
 uv pip install -e ".[dev]"
@@ -35,7 +48,9 @@ agentboss [--host 127.0.0.1] [--port 8848]
 ```
 
 Equivalent environment variables: `AGENTBOSS_CLAUDE_HOME`,
-`AGENTBOSS_REFRESH_INTERVAL`, `AGENTBOSS_ALLOW_CONTROL`.
+`AGENTBOSS_REFRESH_INTERVAL`, `AGENTBOSS_ALLOW_CONTROL`. agentboss keeps its
+own small state (which recommendations you have ticked off) in `~/.agentboss`,
+or `AGENTBOSS_STATE_DIR`.
 
 ## What it shows
 

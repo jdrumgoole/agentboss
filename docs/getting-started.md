@@ -2,14 +2,19 @@
 
 ## Install
 
-agentboss needs Python 3.11 or later.
+agentboss needs Python 3.11 or later. Install it as a standalone command, in
+its own isolated environment:
 
 ```bash
-git clone https://github.com/jdrumgoole/agentboss.git
-cd agentboss
-uv venv --python 3.12
-uv pip install -e .
+uv tool install git+https://github.com/jdrumgoole/agentboss.git
 ```
+
+or, with pipx, `pipx install git+https://github.com/jdrumgoole/agentboss.git`.
+The `agentboss` command is then on your `PATH` from any directory. Upgrade with
+`uv tool upgrade agentboss` and remove it with `uv tool uninstall agentboss`.
+
+From a clone, `uv tool install .` does the same. To work on agentboss itself,
+see [Development](development.md).
 
 ## Run
 

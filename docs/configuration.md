@@ -15,6 +15,7 @@ agentboss [--host 127.0.0.1] [--port 8848]
 | `--claude-home` | `AGENTBOSS_CLAUDE_HOME` | `~/.claude` | Claude Code state directory to read. |
 | `--refresh` | `AGENTBOSS_REFRESH_INTERVAL` | `1.0` | Minimum seconds between filesystem rescans. |
 | `--allow-control` | `AGENTBOSS_ALLOW_CONTROL` | off | Mount the interrupt and terminate endpoints. See [Controlling sessions](controlling-sessions.md). |
+| — | `AGENTBOSS_STATE_DIR` | `~/.agentboss` | Where agentboss keeps its own state (ticked-off recommendations). Never inside `~/.claude`. |
 | `--open` | | off | Open the dashboard in a browser. |
 | `--reload` | | off | Auto-reload on code changes (development). |
 | `--log-level` | | `warning` | uvicorn log level. |
