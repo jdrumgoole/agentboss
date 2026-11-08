@@ -42,15 +42,17 @@ The dashboard is at <http://127.0.0.1:8848/>, the OpenAPI docs at `/docs`.
 ```
 agentboss [--host 127.0.0.1] [--port 8848]
           [--claude-home ~/.claude]
+          [--state-dir ~/.agentboss]
           [--refresh 1.0]        # min seconds between filesystem rescans
           [--allow-control]      # enable interrupt/terminate endpoints
           [--open] [--reload]
 ```
 
 Equivalent environment variables: `AGENTBOSS_CLAUDE_HOME`,
-`AGENTBOSS_REFRESH_INTERVAL`, `AGENTBOSS_ALLOW_CONTROL`. agentboss keeps its
-own small state (which recommendations you have ticked off) in `~/.agentboss`,
-or `AGENTBOSS_STATE_DIR`.
+`AGENTBOSS_STATE_DIR`, `AGENTBOSS_REFRESH_INTERVAL`, `AGENTBOSS_ALLOW_CONTROL`.
+A flag beats its environment variable, which beats the default. agentboss keeps
+its own small state (which recommendations you have ticked off) in the state
+directory, `~/.agentboss` by default.
 
 ## What it shows
 
